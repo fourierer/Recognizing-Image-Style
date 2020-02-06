@@ -124,9 +124,9 @@ if __name__ == '__main__':
 
 2.整理分类
 
-下载好的数据集里面所有类别是混在一起的，需要整理分类。数据集下载在文件夹caffe-master\data\flickr_style\images中，caffe-master中还有train.txt和test.txt标签文件。文件caffe-master\examples\finetune_flickr_style\style_name.txt是各个类别的名称。
+下载好的数据集里面所有类别是混在一起的，需要整理分类。数据集下载在文件夹caffe-master\data\flickr_style\images中，caffe-master\data\flickr_style中还有train.txt和test.txt标签文件。文件caffe-master\examples\finetune_flickr_style\style_name.txt是各个类别的名称。
 
-脚本文件classification.py用于将下载的数据集分类整理成train和test的各个类别存放在文件夹dataset中，代码如下：
+将脚本文件classification.py放到文件夹caffe-master\data\flickr_style当中运行，用于将下载的数据集分类整理成train和test的各个类别存放在文件夹dataset中，代码如下：
 
 ```python
 #@author:sun zheng,2020.02.05
