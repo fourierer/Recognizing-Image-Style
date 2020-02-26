@@ -165,3 +165,13 @@ for line in line_test:
 
 3.训练
 
+识别图像风格本质上还是图像分类任务，flickr style dataset数据集共20个类别，相较于ImageNet数据集类别数少了很多，训练方法准备采用下面两种。
+
+(1)利用pytorch复现CaffeNet进行分类；
+
+(2)在pytorch框架下，使用ResNet等模型进行数据集的分类，可以使用ImageNet进行预训练更改所有参数，或者更改分类数之后只训练ResNet最后一层的权重。
+
+先采用第二种方法训练：
+
+3.1 使用ResNet模型进行预训练
+
