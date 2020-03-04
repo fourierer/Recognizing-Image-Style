@@ -189,7 +189,7 @@ import os
 
 #os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # 指定一块gpu为可见
 #os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"  # 指定四块gpu为可见
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 
 # #############创建数据加载器###################
 print('data loaded begin!')
@@ -204,16 +204,16 @@ data_transform = transforms.Compose([
     # 即：Normalized_image=(image-mean)/std。
 ])
 
-train_dataset = torchvision.datasets.ImageFolder(root='/data/sz/raw/flickr_style/train', transform=data_transform)
+train_dataset = torchvision.datasets.ImageFolder(root='/home/momo/data2/sun.zheng/flickr_style/train', transform=data_transform)
 # 使用ImageFolder需要数据集存储的形式：每个文件夹存储一类图像
 # ImageFolder第一个参数root : 在指定的root路径下面寻找图片
 # 第二个参数transform: 对PIL Image进行转换操作,transform 输入是loader读取图片返回的对象
-train_data = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=4)
+train_data = DataLoader(train_dataset, batch_size=256, shuffle=True, num_workers=4)
 # 第一个参数train_dataset是上面自定义的数据形式
 # 最后一个参数是线程数，>=1即可多线程预读数据
 
-test_dataset = torchvision.datasets.ImageFolder(root='/data/sz/raw/flickr_style/test', transform=data_transform)
-test_data = DataLoader(test_dataset, batch_size=128, shuffle=True, num_workers=4)
+test_dataset = torchvision.datasets.ImageFolder(root='/home/momo/data2/sun.zheng/flickr_style/test', transform=data_transform)
+test_data = DataLoader(test_dataset, batch_size=256, shuffle=True, num_workers=4)
 
 print(type(train_data))
 print('data loaded done!')
@@ -222,7 +222,7 @@ print('data loaded done!')
 
 # ##################创建网络模型###################
 '''
-这里选择从torch里面直接导入resnet，不搭建网络
+自行创建网络模型模块，可以用于pytorch复现CaffeNet
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
@@ -239,7 +239,8 @@ class CNN(nn.Module):
 
 
 '''
-'''
+
+# ImageNet预训练模块，更新所有层的参数
 print('resnet model loaded begin!')
 # 使用resnet50,进行预训练
 model = models.resnet50(pretrained=True)
@@ -250,6 +251,7 @@ for param in model.parameters():
     param.requires_grad = True
 
 '''
+# ImageNet预训练模块，只更新最后一层的参数
 print('resnet model loaded begin!')
 model = models.resnet50(pretrained=True)
 print(model)
@@ -260,7 +262,7 @@ for param in model.parameters():
 # 修改最后一层的参数，使其不固定，即不固定全连接层fc
 for param in model.fc.parameters():
     param.requires_grad = True
-
+'''
 
 
 # 修改最后一层的分类数
@@ -280,7 +282,7 @@ criterion = nn.CrossEntropyLoss()
 #optimizer = optim.SGD(model.parameters(), 1e-1)
 optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), 1e-2)
 
-nums_epoch = 10  # 训练10个epoch
+nums_epoch = 40  # 训练epoch的数量，动态调整
 
 print('training begin!')
 # 开始训练
@@ -288,6 +290,7 @@ losses = []
 acces = []
 eval_losses = []
 eval_acces = []
+S = []
 
 for epoch in range(nums_epoch):
     train_loss = 0
@@ -347,62 +350,76 @@ for epoch in range(nums_epoch):
     print('Epoch {} ,Train Loss: {} ,Train  Accuracy: {} ,Test Loss: {} ,Test Accuracy: {}'.format(
         epoch + 1, train_loss / len(train_data), train_acc / len(train_data), eval_loss / len(test_data),
             eval_acc / len(test_data)))
-    torch.save(model, '/home/sz/Recognizing_Image_Style/model_F.pkl')
+    s = 'Epoch {} ,Train Loss: {} ,Train  Accuracy: {} ,Test Loss: {} ,Test Accuracy: {}'.format(epoch + 1, train_loss / len(train_data), train_acc / len(train_data), eval_loss / len(test_data), eval_acc / len(test_data))
+    S.append(s);
+
+    torch.save(model, '/home/momo/sun.zheng/Recognizing_Image_Style/model_F_l_0.01_SGD_epoch_40.pkl')
     print('model saved done!')
+    print(losses)
+    print(acces)
+    print(eval_losses)
+    print(eval_acces)
+    print(S)
 ```
 
-(1)训练过程只改变最后全连接层的权重，学习率为0.1，迭代方法为SGD，训练10个epoch，模型保存为model_f.pkl。训练结果如下：
+
+
+1.训练过程只更新最后一层的参数：
+
+(1)学习率为0.01，迭代方法为SGD，训练30个epoch，模型保存为model_f_l_0.1_SGD_epoch_30.pkl。训练结果如下：
 
 ......
-
-Epoch 10 ,Train Loss: 1.9965185834140313 ,Train  Accuracy: 0.4061264718250631 ,Test Loss: 2.129829451149585 ,Test Accuracy: 0.36561553269376423
-
-
-
-(2)训练过程改变所有层的权重，学习率为0.1，迭代方法为SGD，训练10个epoch，模型保存为model_F.pkl。训练结果如下：
+Epoch 10 ,Train Loss: 1.902140543921361 ,Train  Accuracy: 0.41654173868139277 ,Test Loss: 1.9437546963785208 ,Test Accuracy: 0.40381944444444445
 
 ......
-
-Epoch 10 ,Train Loss: 0.6007640998637472 ,Train  Accuracy: 0.801908565888205 ,Test Loss: 2.8319117906046847 ,Test Accuracy: 0.38415397408963586
-
-此时结果严重过拟合；
-
-
-
-(3)在ResNet-50的基础上进行微调，调整学习率为0.01，训练10个epoch，结果如下：
-
-Epoch 10 ,Train Loss: 1.8763645724154334 ,Train  Accuracy: 0.42409208751370037 ,Test Loss: 1.926366437883938 ,Test Accuracy: 0.40895337301587303
-
-此时几乎没有过拟合现象，并且测试集上的训练结果已经超过CaffeNet，为40.1%。
-
-
-
-(4)在ResNet-50的基础上，调整学习率为0.01，训练20个epoch，结果如下：
-
-......
-Epoch 14 ,Train Loss: 1.851296254358548 ,Train  Accuracy: 0.4299944408144339 ,Test Loss: 1.912512249806348 ,Test Accuracy: 0.4126152544351074
-......
-Epoch 15 ,Train Loss: 1.8466478076132702 ,Train  Accuracy: 0.4303059923277969 ,Test Loss: 1.9137008283652512 ,Test Accuracy: 0.4143148926237162
-
-......
-Epoch 16 ,Train Loss: 1.8424751091120004 ,Train  Accuracy: 0.4338068301576596 ,Test Loss: 1.9163187695484536 ,Test Accuracy: 0.40984112394957983
-
-......
-Epoch 17 ,Train Loss: 1.8378852556270608 ,Train  Accuracy: 0.4341032322316837 ,Test Loss: 1.9090858978383682 ,Test Accuracy: 0.41270643674136326
-
-......
-Epoch 18 ,Train Loss: 1.83375675025371 ,Train  Accuracy: 0.43598308005227215 ,Test Loss: 1.9098872273576026 ,Test Accuracy: 0.4104086426237162
-
-......
-Epoch 19 ,Train Loss: 1.8296146733836616 ,Train  Accuracy: 0.43560632008262373 ,Test Loss: 1.9032716599165225 ,Test Accuracy: 0.4161626108776844
-
+Epoch 20 ,Train Loss: 1.8567710091840375 ,Train  Accuracy: 0.42908481578281765 ,Test Loss: 1.9234777677292918 ,Test Accuracy: 0.4086900385154062
 ......
 
-Epoch 20 ,Train Loss: 1.8266588061829359 ,Train  Accuracy: 0.4376198781721608 ,Test Loss: 1.9032626444218206 ,Test Accuracy: 0.4139676704014939
+Epoch 30 ,Train Loss: 1.828558410000976 ,Train  Accuracy: 0.4384050143326869 ,Test Loss: 1.912335047534868 ,Test Accuracy: 0.4108776844070962
+
+
+
+(2)学习率为0.001，迭代方法为SGD，训练40个epoch，模型保存为model_f_l_0.01_SGD_epoch_40.pkl。训练结果如下：
 
 ......
+Epoch 10 ,Train Loss: 2.281559232386147 ,Train  Accuracy: 0.3439155803195963 ,Test Loss: 2.27691650390625 ,Test Accuracy: 0.3451444553143146
 
-测试集上测试结果约为41%，多训练10个epoch准确率没有太大改动。
+......
+Epoch 20 ,Train Loss: 2.113882165420346 ,Train  Accuracy: 0.37235334314550045 ,Test Loss: 2.1211741578345205 ,Test Accuracy: 0.3712380606749138
 
-后续的微调可以继续调整其他参数。
+......
+Epoch 30 ,Train Loss: 2.045651798713498 ,Train  Accuracy: 0.38550186606391923 ,Test Loss: 2.0619620225008797 ,Test Accuracy: 0.38386738144828747
+
+......
+Epoch 40 ,Train Loss: 2.0072273568409247 ,Train  Accuracy: 0.39226043418839357 ,Test Loss: 2.0252821679208792 ,Test Accuracy: 0.38980482885214174
+
+
+
+将学习率定为0.01进行下面的训练：
+
+2.训练过程更新所有的参数
+
+(2)训练过程改变所有层的权重，学习率为0.01，迭代方法为SGD，训练40个epoch，模型保存为model_F_l_0.01_SGD_epoch_21.pkl。
+
+（本来打算训练40个epoch，但中途发现训练结果严重过拟合，所以停止了训练了，保存了21个epoch的训练结果）
+
+训练集loss：[2.350438571557766, 1.9172641951863358, 1.7942136380730607, 1.7071296529072086, 1.6328534864797826, 1.5606001795791997, 1.4783432902359381, 1.391603258760964, 1.2973330032534716, 1.1917561804375998, 1.0727995445088643, 0.943589751022618, 0.807379489991723, 0.667758800053015, 0.535146447071215, 0.4152965676493761, 0.3108352328219065, 0.22810486642325797, 0.16467725765414354, 0.12011081056623923, 0.08935694278376859];
+
+训练集准确率：[0.3135118797308663, 0.41423333683767877, 0.4470793471404542, 0.47061277859545836, 0.49184385513036166, 0.5136820595037846, 0.5384448591253154, 0.5630801881833474, 0.5913687973086628, 0.625833158116064, 0.6681277596719933, 0.7085076745164003, 0.7557315759041211, 0.8076180088309504, 0.8545666000841042, 0.8959833631202692, 0.9312664266190075, 0.9560390822119429, 0.9737601187973087, 0.9848999947434819, 0.9910704899074853]
+
+测试集loss：[2.028365217003168, 1.9077880943522734, 1.8536552564770568, 1.8174886563244987, 1.8170345974903481, 1.803846976336311, 1.8090978954352586, 1.8148543460696351, 1.8416614625968186, 1.8701898701050703, 1.916649343920689, 1.9919380346934001, 2.0653915755888996, 2.1646902981926415, 2.2747778331532196, 2.3746308672661876, 2.5098320269117167, 2.61287260055542, 2.6882708072662354, 2.770793914794922, 2.865333547779158]
+
+测试集准确率：[0.38563000978288314, 0.41336428616510984, 0.42864313778086344, 0.43828729855676174, 0.44274383573171755, 0.44621419517377764, 0.44661228225195654, 0.45024240248674574, 0.447516278507111, 0.4425840749389885, 0.4399486793107801, 0.4341059049692838, 0.42953957334006565, 0.4237648452621392, 0.41898582796852646, 0.4136469904485399, 0.40987880533114535, 0.40190654453841623, 0.40949583964487085, 0.40947315755701424, 0.4050070873306404]
+
+
+
+绘制曲线图观察：
+
+![Figure_1](/Users/momo/Documents/momo学习笔记/工作汇报/2020.03.04/Figure_1.png)
+
+蓝色为训练集曲线，红色为测试集曲线，横坐标为训练轮次epoch，纵坐标为准确率。随着训练轮次的增加，模型逐渐过拟合，从曲线和数据分布可以得出，当epoch=7或者8时，模型在测试集上可以达到最高的准确率（约45%）和最低的loss。
+
+再次训练8个epoch，保存模型为model_F_l_0.01_SGD_epoch_8.pkl。
+
+
 
