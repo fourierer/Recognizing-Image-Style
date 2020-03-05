@@ -364,6 +364,8 @@ for epoch in range(nums_epoch):
 
 
 
+4.结果
+
 1.训练过程只更新最后一层的参数：
 
 (1)学习率为0.01，迭代方法为SGD，训练30个epoch，模型保存为model_f_l_0.1_SGD_epoch_30.pkl。训练结果如下：
@@ -422,4 +424,272 @@ Epoch 40 ,Train Loss: 2.0072273568409247 ,Train  Accuracy: 0.39226043418839357 ,
 再次训练8个epoch，保存模型为model_F_l_0.01_SGD_epoch_8.pkl。
 
 
+
+5.评估及分析
+
+对测试集进行batch批量测试，Test.py：
+
+```python
+import torch
+import torchvision
+from PIL import Image
+from torchvision import transforms
+from torch.utils.data import DataLoader
+device = torch.device('cuda')
+data_transform = transforms.Compose([
+    transforms.Resize(224),  # 改变图像大小，作为224*224的正方形
+    transforms.CenterCrop(224),  # 以图像中心进行切割，参数只有一个要切成正方形转
+    transforms.ToTensor(),  # 把一个取值范围是[0,255]的PIL.Image或者shape为(H,W,C)的numpy.ndarray，
+    # 转换成形状为[C,H,W]，取值范围是[0,1]的torch.FloadTensor
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])  # 给定均值：(R,G,B) 方差：（R，G，B），将会把Tensor正则化。
+    # 即：Normalized_image=(image-mean)/std。
+])
+
+print('Test data load begin!')
+test_dataset = torchvision.datasets.ImageFolder(root='/home/momo/data2/sun.zheng/flickr_style/test', transform=data_transform)
+test_data = DataLoader(test_dataset, batch_size=128, shuffle=True, num_workers=4)
+print(type(test_data))
+print('Test data load done!')
+
+print('load model begin!')
+model = torch.load('/home/momo/sun.zheng/Recognizing_Image_Style/model_F_l_0.01_SGD_epoch_8.pkl')
+model.eval()  # 固定batchnorm，dropout等，一定要有
+model= model.to(device)
+print('load model done!')
+
+
+#测试单个图像属于哪个类别
+'''
+torch.no_grad()
+img = Image.open('/home/momo/mnt/data2/datum/raw/val2/n01440764/ILSVRC2012_val_00026064.JPEG')
+img = transform(img).unsqueeze(0)
+img_= img.to(device)
+outputs = net(img_)
+_, predicted = torch.max(outputs,1)
+print('this picture maybe:' + str(predicted))
+'''
+#批量测试准确率,并输出所有测试集的平均准确率
+eval_acc = 0
+torch.no_grad()
+for img1, label1 in test_data:
+    img1 = img1.to(device)
+    label1 = label1.to(device)
+    out = model(img1)
+
+    _, pred = out.max(1)
+    print(pred)
+    print(label1)
+    num_correct = (pred == label1).sum().item()
+    acc = num_correct / img1.shape[0]
+    print('Test acc in current batch:' + str(acc))
+    eval_acc +=acc
+
+print('final acc in Test data:' + str(eval_acc / len(test_data)))
+```
+
+测试集上的平均精度为45.37，其中发现有的batch测试结果大于45%(约60%)，有的batch测试结果小于45%(约30%)，模型的测试结果跟数据集中不同类别的样本有关。
+
+接下来对每个类别进行测试，观察错分样本的个数，得到每个类样本的分类准确率，classify_test_data_result.py:
+
+```python
+# 此脚本用于识别测试数据集中每一类，将分类正确的和错误的分别置于每一类文件中两个文件夹里面
+import shutil
+import os
+import torch
+import torchvision
+import D  # 自己写的D.py，为了方便后续分类
+from PIL import Image
+from torchvision import transforms
+from torch.utils.data import DataLoader
+#定义数据转换格式transform
+device = torch.device('cuda')
+data_transform = transforms.Compose([
+    transforms.Resize(224),  # 改变图像大小，作为224*224的正方形
+    transforms.CenterCrop(224),  # 以图像中心进行切割，参数只有一个要切成正方形转
+    transforms.ToTensor(),  # 把一个取值范围是[0,255]的PIL.Image或者shape为(H,W,C)的numpy.ndarray，
+    # 转换成形状为[C,H,W]，取值范围是[0,1]的torch.FloadTensor
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])  # 给定均值：(R,G,B) 方差：（R，G，B），将会把Tensor正则化。
+    # 即：Normalized_image=(image-mean)/std
+])
+
+#加载模型
+print('load model begin!')
+model = torch.load('/home/momo/sun.zheng/Recognizing_Image_Style/model_F_l_0.01_SGD_epoch_8.pkl')
+model.eval()
+model= model.to(device)
+print('load model done!')
+
+
+#从数据集中加载测试数据
+test_dataset = D.ImageFolder(root='/home/momo/data2/sun.zheng/flickr_style/test', transform=data_transform)  # 这里使用自己写的data.py文件，ImageFolder不仅返回图片和标签，还返回图片的路径，方便后续方便保存
+#test_dataset = torchvision.datasets.ImageFolder(root='/home/momo/mnt/data2/datum/raw/val2', transform=data_transform)
+test_data = DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=4)
+
+'''
+路径/home/momo/data2/sun.zheng/flickr_style/test里面是原始测试集，
+路径/home/momo/sun.zheng/Recognizing_Image_Style/test_result里面批量建立文件夹，每一类数据建立一个文件夹，
+文件夹包括right和wrong两个文件夹，分别表示在保存的模型测试下，该类正确分类和错误分类的样本集合
+'''
+
+
+count = 0  # 当前类别测试图片个数
+
+
+
+for img1, label1, path1 in test_data:
+    count = count + 1
+
+    #img11 = img1.squeeze()  # 此处的squeeze()去除size为1的维度，,将(1,3,224,224)的tensor转换为(3,224,224)的tensor
+    #new_img1 = transforms.ToPILImage()(img11).convert('RGB')  # new_img1为PIL.Image类型
+    img1 = img1.to(device)  # img1是tensor类型，规模是(1,3,224,224),gpu的tensor无法转换成PIL，所以在转换之后再放到gpu上
+    label1 = label1.to(device)
+    out = model(img1)
+    _, pred = out.max(1)  # pred是类别数，tensor类型
+    print(count)
+    #print(path1[0])
+    #print(type(path1[0]))
+
+    if pred == label1:
+        #将分对的图像放在right文件夹里面
+        img_path = '/home/momo/sun.zheng/Recognizing_Image_Style/test_result/' + str(label1[0]) + '/right/'
+        folder = os.path.exists(img_path)
+        if not folder:
+            os.makedirs(img_path)
+        shutil.copy(path1[0], img_path)
+    else:
+        #将错的图像放在wrong文件夹里面
+        img_path = '/home/momo/sun.zheng/Recognizing_Image_Style/test_result/' + str(label1[0]) + '/wrong/'
+        folder = os.path.exists(img_path)
+        if not folder:
+            os.makedirs(img_path)
+        shutil.copy(path1[0], img_path)
+```
+
+
+
+第1类：Detailed
+
+Right:210,Wrong:359,正确率：36.9%
+
+
+
+第2类：Pastel(柔和的)
+
+Right:161,Wrong:417,正确率：27.9%
+
+
+
+第3类：Melancholy(忧郁的)
+
+Right:112,Wrong:458,正确率：19.6%
+
+
+
+第4类：Noir(黑色的)
+
+Right:440,Wrong:270,正确率：62%
+
+
+
+第5类：HDR
+
+Right:387,Wrong:275,正确率：58.5%
+
+
+
+第6类：Vintage(古老的)
+
+Right:254,Wrong:398,正确率：39%
+
+
+
+第7类：Long Exposure(长时间曝光)
+
+Right:408,Wrong:227,正确率：64.2%
+
+
+
+第8类：Horror(恐怖的)
+
+Right:406,Wrong:314,正确率：56.4%
+
+
+
+第9类：Sunny(阳光的)
+
+Right:435,Wrong:249,正确率：63.6%
+
+
+
+第10类：Bright(明亮的)
+
+Right:169,Wrong:479,正确率：26.1%
+
+
+
+第11类：Hazy(朦胧的)
+
+Right:417,Wrong:261,正确率：61.5%
+
+
+
+第12类：Bokeh(散景的)
+
+Right:289,Wrong:385,正确率：42.9%
+
+
+
+第13类：Serene(宁静的)
+
+Right:235,Wrong:496,正确率：32.1%
+
+
+
+第14类：Texture(纹理的)
+
+Right:222,Wrong:458,正确率：32.6%
+
+
+
+第15类：Ethereal(飘渺的)
+
+Right:340,Wrong:294,正确率：53.6%
+
+
+
+第16类：Macro(微距摄影的)
+
+Right:484,Wrong:170,正确率：74%
+
+
+
+第17类：Depth of Field(景深的)
+
+Right:90,Wrong:558,正确率：13.9%
+
+
+
+第18类：Geometric Composition(几何组成的)
+
+Right:306,Wrong:334,正确率：47.8%
+
+
+
+第19类：Minimal
+
+Right:386,Wrong:257,正确率：60.0%
+
+
+
+第20类：Romantic(浪漫的)
+
+Right:162,Wrong:461,正确率：26%
+
+
+
+从上述结果中可以看出，人容易分辨的类别，ResNet模型的准确率也比较高，如Noir(黑色的)、Horror(恐怖的)、Hazy(朦胧的)以及Macro(微距摄影的)；相对的一些抽象的概念，比如Melancholy(忧郁的)、Depth of Field(景深的)以及Romantic(浪漫的)。要想提高测试集整体的准确率，就需要在这些抽象的类别上提高准确率。
+
+改进：考虑到一个图片分风格不是由图片上某一个物体或者说由局部特征决定，而应该考虑图片上各部分之间的联系和整体构图。传统的卷积神经网络如ResNet，就是在提取一个图片上的局部特征，可以在ImageNet上表现很好，但是无法分辨一个图像的风格。后续改进考虑在ResNet(或者其他卷积神经网络模型)的基础之上引入Non-local机制，使得提取的特征是全局的，进而利用这些全局特征来进一步分类。
 
