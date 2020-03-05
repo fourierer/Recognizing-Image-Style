@@ -9,7 +9,7 @@ import os
 
 #os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # 指定一块gpu为可见
 #os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"  # 指定四块gpu为可见
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 
 # #############创建数据加载器###################
 print('data loaded begin!')
@@ -24,16 +24,16 @@ data_transform = transforms.Compose([
     # 即：Normalized_image=(image-mean)/std。
 ])
 
-train_dataset = torchvision.datasets.ImageFolder(root='/data/sz/raw/flickr_style/train', transform=data_transform)
+train_dataset = torchvision.datasets.ImageFolder(root='/home/momo/data2/sun.zheng/flickr_style/train', transform=data_transform)
 # 使用ImageFolder需要数据集存储的形式：每个文件夹存储一类图像
 # ImageFolder第一个参数root : 在指定的root路径下面寻找图片
 # 第二个参数transform: 对PIL Image进行转换操作,transform 输入是loader读取图片返回的对象
-train_data = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=4)
+train_data = DataLoader(train_dataset, batch_size=256, shuffle=True, num_workers=4)
 # 第一个参数train_dataset是上面自定义的数据形式
 # 最后一个参数是线程数，>=1即可多线程预读数据
 
-test_dataset = torchvision.datasets.ImageFolder(root='/data/sz/raw/flickr_style/test', transform=data_transform)
-test_data = DataLoader(test_dataset, batch_size=128, shuffle=True, num_workers=4)
+test_dataset = torchvision.datasets.ImageFolder(root='/home/momo/data2/sun.zheng/flickr_style/test', transform=data_transform)
+test_data = DataLoader(test_dataset, batch_size=256, shuffle=True, num_workers=4)
 
 print(type(train_data))
 print('data loaded done!')
@@ -42,7 +42,7 @@ print('data loaded done!')
 
 # ##################创建网络模型###################
 '''
-这里选择从torch里面直接导入resnet，不搭建网络
+自行创建网络模型模块，可以用于pytorch复现CaffeNet
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
@@ -59,7 +59,8 @@ class CNN(nn.Module):
 	
 
 '''
-'''
+
+# ImageNet预训练模块，更新所有层的参数
 print('resnet model loaded begin!')
 # 使用resnet50,进行预训练
 model = models.resnet50(pretrained=True)
@@ -70,6 +71,7 @@ for param in model.parameters():
     param.requires_grad = True
 
 '''
+# ImageNet预训练模块，只更新最后一层的参数
 print('resnet model loaded begin!')
 model = models.resnet50(pretrained=True)
 print(model)
@@ -80,7 +82,7 @@ for param in model.parameters():
 # 修改最后一层的参数，使其不固定，即不固定全连接层fc
 for param in model.fc.parameters():
     param.requires_grad = True
-
+'''
 
 
 # 修改最后一层的分类数
@@ -100,7 +102,7 @@ criterion = nn.CrossEntropyLoss()
 #optimizer = optim.SGD(model.parameters(), 1e-1)
 optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), 1e-2)
 
-nums_epoch = 10  # 训练10个epoch
+nums_epoch = 8  # 训练epoch的数量，动态调整
 
 print('training begin!')
 # 开始训练
@@ -108,6 +110,7 @@ losses = []
 acces = []
 eval_losses = []
 eval_acces = []
+S = []
 
 for epoch in range(nums_epoch):
     train_loss = 0
@@ -167,7 +170,15 @@ for epoch in range(nums_epoch):
     print('Epoch {} ,Train Loss: {} ,Train  Accuracy: {} ,Test Loss: {} ,Test Accuracy: {}'.format(
         epoch + 1, train_loss / len(train_data), train_acc / len(train_data), eval_loss / len(test_data),
             eval_acc / len(test_data)))
-    torch.save(model, '/home/sz/Recognizing_Image_Style/model_F.pkl')
+    s = 'Epoch {} ,Train Loss: {} ,Train  Accuracy: {} ,Test Loss: {} ,Test Accuracy: {}'.format(epoch + 1, train_loss / len(train_data), train_acc / len(train_data), eval_loss / len(test_data), eval_acc / len(test_data))
+    S.append(s);
+
+    torch.save(model, '/home/momo/sun.zheng/Recognizing_Image_Style/model_F_l_0.01_SGD_epoch_8.pkl')
     print('model saved done!')
+    print(losses)
+    print(acces)
+    print(eval_losses)
+    print(eval_acces)
+    print(S)
 
 
