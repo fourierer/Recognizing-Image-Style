@@ -693,3 +693,548 @@ Right:162,Wrong:461,正确率：26%
 
 改进：考虑到一个图片分风格不是由图片上某一个物体或者说由局部特征决定，而应该考虑图片上各部分之间的联系和整体构图。传统的卷积神经网络如ResNet，就是在提取一个图片上的局部特征，可以在ImageNet上表现很好，但是无法分辨一个图像的风格。后续改进考虑在ResNet(或者其他卷积神经网络模型)的基础之上引入Non-local机制，使得提取的特征是全局的，进而利用这些全局特征来进一步分类。
 
+
+
+
+
+**进一步分析：**
+
+暂时不添加Non-local机制，进一步分析不同类别之间的界限，观察各个类别误分的样本，主要误分为哪些类别。
+
+1.classify_test_data_to_other.py，在classify_test_data.py的基础上略加修改
+
+```python
+# 此脚本用于识别测试数据集中每一类，将分类正确的和错误的分别置于每一类文件中两个文件夹里面，并且错分的类别要明确是错分为什么类别
+import shutil
+import os
+import torch
+import torchvision
+import D  # 自己写的D.py，为了方便后续分类
+from PIL import Image
+from torchvision import transforms
+from torch.utils.data import DataLoader
+#定义数据转换格式transform
+device = torch.device('cuda')
+data_transform = transforms.Compose([
+    transforms.Resize(224),  # 改变图像大小，作为224*224的正方形
+    transforms.CenterCrop(224),  # 以图像中心进行切割，参数只有一个要切成正方形转
+    transforms.ToTensor(),  # 把一个取值范围是[0,255]的PIL.Image或者shape为(H,W,C)的numpy.ndarray，
+    # 转换成形状为[C,H,W]，取值范围是[0,1]的torch.FloadTensor
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])  # 给定均值：(R,G,B) 方差：（R，G，B），将会把Tensor正则化。
+    # 即：Normalized_image=(image-mean)/std
+])
+
+#加载模型
+print('load model begin!')
+model = torch.load('/home/momo/sun.zheng/Recognizing_Image_Style/model_F_l_0.01_SGD_epoch_8.pkl')
+model.eval()
+model= model.to(device)
+print('load model done!')
+
+
+#从数据集中加载测试数据
+test_dataset = D.ImageFolder(root='/home/momo/data2/sun.zheng/flickr_style/test', transform=data_transform)  # 这里使用自己写的data.py文件，ImageFolder不仅返回图片和标签，还返回图片的路径，方便后续方便保存
+#test_dataset = torchvision.datasets.ImageFolder(root='/home/momo/mnt/data2/datum/raw/val2', transform=data_transform)
+test_data = DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=4)
+
+'''
+路径/home/momo/data2/sun.zheng/flickr_style/test里面是原始测试集，
+路径/home/momo/sun.zheng/Recognizing_Image_Style/test_result_to_other里面批量建立文件夹，每一类数据建立一个文件夹，
+文件夹包括right和wrong两个文件夹，分别表示在保存的模型测试下，该类正确分类和错误分类的样本集合，错分文件夹里面是具体错分的类别
+'''
+
+
+count = 0  # 当前类别测试图片个数
+
+
+
+for img1, label1, path1 in test_data:
+    count = count + 1
+
+    #img11 = img1.squeeze()  # 此处的squeeze()去除size为1的维度，,将(1,3,224,224)的tensor转换为(3,224,224)的tensor
+    #new_img1 = transforms.ToPILImage()(img11).convert('RGB')  # new_img1为PIL.Image类型
+    img1 = img1.to(device)  # img1是tensor类型，规模是(1,3,224,224),gpu的tensor无法转换成PIL，所以在转换之后再放到gpu上
+    label1 = label1.to(device)
+    out = model(img1)
+    _, pred = out.max(1)  # pred是类别数，tensor类型
+    print(count)
+    #print(path1[0])
+    #print(type(path1[0]))
+
+    if pred == label1:
+        #将分对的图像放在right文件夹里面
+        img_path = '/home/momo/sun.zheng/Recognizing_Image_Style/test_result_to_other/' + str(label1[0]) + '/right/'
+        folder = os.path.exists(img_path)
+        if not folder:
+            os.makedirs(img_path)
+        shutil.copy(path1[0], img_path)
+    else:
+        #将错的图像放在wrong文件夹里面，且精确到哪个类别
+        img_path = '/home/momo/sun.zheng/Recognizing_Image_Style/test_result_to_other/' + str(label1[0]) + '/wrong/' + str(pred[0]) + '/'
+        folder = os.path.exists(img_path)
+        if not folder:
+            os.makedirs(img_path)
+        shutil.copy(path1[0], img_path)
+```
+
+
+
+2.批量更改文件夹名称，保存的类别文件夹名称都是tensor类型的，需要更改为风格化名称：(在每个类别文件夹里面运行下面的shell脚本)
+
+Change_file_name.sh：
+
+```shell
+mv tensor\(0\,\ device\=\'cuda\:0\'\)/ Detailed;
+mv tensor\(1\,\ device\=\'cuda\:0\'\)/ Pastel;
+mv tensor\(2\,\ device\=\'cuda\:0\'\)/ Hazy;
+mv tensor\(3\,\ device\=\'cuda\:0\'\)/ Bokeh;
+mv tensor\(4\,\ device\=\'cuda\:0\'\)/ Serene;
+mv tensor\(5\,\ device\=\'cuda\:0\'\)/ Texture;
+mv tensor\(6\,\ device\=\'cuda\:0\'\)/ Ethereal;
+mv tensor\(7\,\ device\=\'cuda\:0\'\)/ Macro;
+mv tensor\(8\,\ device\=\'cuda\:0\'\)/ Depth_of_Field;
+mv tensor\(9\,\ device\=\'cuda\:0\'\)/ Geometirc_Composition;
+mv tensor\(10\,\ device\=\'cuda\:0\'\)/ Minimal;
+mv tensor\(11\,\ device\=\'cuda\:0\'\)/ Romantic;
+mv tensor\(12\,\ device\=\'cuda\:0\'\)/ Melancholy;
+mv tensor\(13\,\ device\=\'cuda\:0\'\)/ Noir;
+mv tensor\(14\,\ device\=\'cuda\:0\'\)/ HDR;
+mv tensor\(15\,\ device\=\'cuda\:0\'\)/ Vintage;
+mv tensor\(16\,\ device\=\'cuda\:0\'\)/ Long_Exposure;
+mv tensor\(17\,\ device\=\'cuda\:0\'\)/ Horror;
+mv tensor\(18\,\ device\=\'cuda\:0\'\)/ Sunny;
+mv tensor\(19\,\ device\=\'cuda\:0\'\)/ Bright;
+```
+
+
+
+3.计算各个类别误分为其他类别的个数
+
+```python
+#此脚本用于分析测试集当中不同类别里面的错分样本，错分为哪些类别，且错分量为多少
+#在划分好的测试数据集下（test_result_to_other）运行该脚本
+
+import os
+
+classlist = os.listdir('./test_result_to_other/')
+num_class = len(classlist)
+for i in range(num_class):
+    category = classlist[i]
+    print('large category:' + category)
+    error_path = './test_result_to_other/' + category +'/wrong/'
+    category_error_list = os.listdir(error_path)
+    num_error_class = len(category_error_list)
+    for j in range(num_error_class):
+        category1 = category_error_list[j]
+        error_category_path = './test_result_to_other/' + category + '/wrong/' + category1 + '/'
+        image_list = os.listdir(error_category_path)
+        error_num = len(image_list)
+        print('category:' + category1 + '   num:' + str(error_num))
+```
+
+
+
+结果输出：
+
+```python
+large category:Bright
+category:Bokeh   num:46
+category:Noir   num:4
+category:Melancholy   num:9
+category:Sunny   num:48
+category:Detailed   num:60
+category:Ethereal   num:10
+category:HDR   num:44
+category:Vintage   num:13
+category:Depth_of_Field   num:14
+category:Minimal   num:24
+category:Horror   num:17
+category:Pastel   num:18
+category:Geometirc_Composition   num:31
+category:Macro   num:41
+category:Hazy   num:7
+category:Long_Exposure   num:25
+category:Texture   num:20
+category:Serene   num:35
+category:Romantic   num:13
+large category:Bokeh
+category:Bright   num:24
+category:Noir   num:22
+category:Melancholy   num:21
+category:Sunny   num:4
+category:Detailed   num:27
+category:Ethereal   num:10
+category:HDR   num:8
+category:Vintage   num:25
+category:Depth_of_Field   num:70
+category:Minimal   num:8
+category:Horror   num:8
+category:Pastel   num:34
+category:Geometirc_Composition   num:4
+category:Macro   num:78
+category:Hazy   num:2
+category:Long_Exposure   num:3
+category:Texture   num:12
+category:Serene   num:5
+category:Romantic   num:20
+large category:Noir
+category:Bright   num:5
+category:Bokeh   num:6
+category:Melancholy   num:28
+category:Detailed   num:5
+category:Ethereal   num:23
+category:HDR   num:6
+category:Vintage   num:12
+category:Depth_of_Field   num:13
+category:Minimal   num:12
+category:Horror   num:82
+category:Pastel   num:1
+category:Geometirc_Composition   num:23
+category:Macro   num:4
+category:Hazy   num:19
+category:Long_Exposure   num:6
+category:Texture   num:18
+category:Serene   num:1
+category:Romantic   num:6
+large category:Melancholy
+category:Bright   num:10
+category:Bokeh   num:21
+category:Noir   num:62
+category:Sunny   num:10
+category:Detailed   num:7
+category:Ethereal   num:71
+category:HDR   num:14
+category:Vintage   num:41
+category:Depth_of_Field   num:18
+category:Minimal   num:19
+category:Horror   num:35
+category:Pastel   num:23
+category:Geometirc_Composition   num:13
+category:Hazy   num:34
+category:Long_Exposure   num:10
+category:Texture   num:36
+category:Serene   num:15
+category:Romantic   num:19
+large category:Sunny
+category:Bright   num:8
+category:Bokeh   num:7
+category:Noir   num:13
+category:Melancholy   num:6
+category:Detailed   num:5
+category:Ethereal   num:8
+category:HDR   num:27
+category:Vintage   num:2
+category:Depth_of_Field   num:7
+category:Minimal   num:15
+category:Horror   num:2
+category:Pastel   num:4
+category:Geometirc_Composition   num:11
+category:Macro   num:2
+category:Hazy   num:44
+category:Long_Exposure   num:31
+category:Texture   num:4
+category:Serene   num:42
+category:Romantic   num:11
+large category:Detailed
+category:Bright   num:36
+category:Bokeh   num:36
+category:Noir   num:5
+category:Melancholy   num:1
+category:Sunny   num:19
+category:Ethereal   num:5
+category:HDR   num:20
+category:Vintage   num:15
+category:Depth_of_Field   num:15
+category:Minimal   num:12
+category:Horror   num:21
+category:Pastel   num:4
+category:Geometirc_Composition   num:38
+category:Macro   num:33
+category:Hazy   num:9
+category:Long_Exposure   num:17
+category:Texture   num:28
+category:Serene   num:31
+category:Romantic   num:14
+large category:Ethereal
+category:Bright   num:8
+category:Bokeh   num:13
+category:Noir   num:21
+category:Melancholy   num:40
+category:Sunny   num:13
+category:Detailed   num:3
+category:HDR   num:2
+category:Vintage   num:24
+category:Depth_of_Field   num:2
+category:Minimal   num:14
+category:Horror   num:29
+category:Pastel   num:23
+category:Geometirc_Composition   num:3
+category:Macro   num:7
+category:Hazy   num:49
+category:Long_Exposure   num:7
+category:Texture   num:13
+category:Serene   num:9
+category:Romantic   num:14
+large category:HDR
+category:Bright   num:25
+category:Bokeh   num:7
+category:Noir   num:5
+category:Melancholy   num:5
+category:Sunny   num:20
+category:Detailed   num:13
+category:Ethereal   num:6
+category:Vintage   num:7
+category:Depth_of_Field   num:14
+category:Minimal   num:4
+category:Horror   num:18
+category:Pastel   num:1
+category:Geometirc_Composition   num:19
+category:Macro   num:3
+category:Hazy   num:12
+category:Long_Exposure   num:42
+category:Texture   num:15
+category:Serene   num:52
+category:Romantic   num:7
+large category:Vintage
+category:Bright   num:20
+category:Bokeh   num:30
+category:Noir   num:19
+category:Melancholy   num:42
+category:Sunny   num:3
+category:Detailed   num:23
+category:Ethereal   num:27
+category:HDR   num:7
+category:Depth_of_Field   num:21
+category:Minimal   num:10
+category:Horror   num:16
+category:Pastel   num:71
+category:Geometirc_Composition   num:17
+category:Macro   num:4
+category:Hazy   num:14
+category:Long_Exposure   num:3
+category:Texture   num:7
+category:Serene   num:9
+category:Romantic   num:55
+large category:Depth_of_Field
+category:Bright   num:30
+category:Bokeh   num:155
+category:Noir   num:22
+category:Melancholy   num:26
+category:Sunny   num:6
+category:Detailed   num:24
+category:Ethereal   num:13
+category:HDR   num:18
+category:Vintage   num:38
+category:Minimal   num:17
+category:Horror   num:20
+category:Pastel   num:24
+category:Geometirc_Composition   num:13
+category:Macro   num:57
+category:Hazy   num:12
+category:Long_Exposure   num:11
+category:Texture   num:25
+category:Serene   num:26
+category:Romantic   num:21
+large category:Minimal
+category:Bright   num:20
+category:Bokeh   num:10
+category:Noir   num:15
+category:Melancholy   num:6
+category:Sunny   num:18
+category:Detailed   num:2
+category:Ethereal   num:5
+category:Vintage   num:1
+category:Depth_of_Field   num:1
+category:Horror   num:5
+category:Pastel   num:2
+category:Geometirc_Composition   num:60
+category:Macro   num:26
+category:Hazy   num:27
+category:Long_Exposure   num:13
+category:Texture   num:37
+category:Serene   num:8
+category:Romantic   num:1
+large category:Horror
+category:Bright   num:17
+category:Bokeh   num:4
+category:Noir   num:108
+category:Melancholy   num:26
+category:Sunny   num:2
+category:Detailed   num:12
+category:Ethereal   num:26
+category:HDR   num:23
+category:Vintage   num:13
+category:Depth_of_Field   num:7
+category:Minimal   num:6
+category:Geometirc_Composition   num:9
+category:Macro   num:7
+category:Hazy   num:5
+category:Long_Exposure   num:6
+category:Texture   num:26
+category:Serene   num:5
+category:Romantic   num:12
+large category:Pastel
+category:Bright   num:16
+category:Bokeh   num:60
+category:Noir   num:6
+category:Melancholy   num:28
+category:Sunny   num:9
+category:Detailed   num:10
+category:Ethereal   num:35
+category:HDR   num:6
+category:Vintage   num:84
+category:Depth_of_Field   num:14
+category:Minimal   num:21
+category:Horror   num:8
+category:Geometirc_Composition   num:15
+category:Macro   num:13
+category:Hazy   num:18
+category:Long_Exposure   num:6
+category:Texture   num:3
+category:Serene   num:10
+category:Romantic   num:55
+large category:Geometirc_Composition
+category:Bright   num:37
+category:Bokeh   num:5
+category:Noir   num:35
+category:Melancholy   num:7
+category:Sunny   num:6
+category:Detailed   num:17
+category:Ethereal   num:7
+category:HDR   num:31
+category:Vintage   num:5
+category:Depth_of_Field   num:10
+category:Minimal   num:75
+category:Horror   num:6
+category:Pastel   num:1
+category:Macro   num:11
+category:Hazy   num:8
+category:Long_Exposure   num:19
+category:Texture   num:38
+category:Serene   num:10
+category:Romantic   num:6
+large category:Macro
+category:Bright   num:15
+category:Bokeh   num:46
+category:Noir   num:2
+category:Sunny   num:1
+category:Detailed   num:13
+category:Ethereal   num:5
+category:HDR   num:1
+category:Vintage   num:9
+category:Depth_of_Field   num:8
+category:Minimal   num:19
+category:Horror   num:5
+category:Pastel   num:5
+category:Geometirc_Composition   num:5
+category:Hazy   num:1
+category:Long_Exposure   num:3
+category:Texture   num:31
+category:Romantic   num:1
+large category:Hazy
+category:Bright   num:5
+category:Bokeh   num:11
+category:Noir   num:16
+category:Melancholy   num:18
+category:Sunny   num:35
+category:Detailed   num:2
+category:Ethereal   num:29
+category:HDR   num:12
+category:Vintage   num:12
+category:Depth_of_Field   num:7
+category:Minimal   num:18
+category:Horror   num:3
+category:Pastel   num:7
+category:Geometirc_Composition   num:2
+category:Macro   num:3
+category:Long_Exposure   num:27
+category:Texture   num:3
+category:Serene   num:44
+category:Romantic   num:7
+large category:Long_Exposure
+category:Bright   num:23
+category:Bokeh   num:2
+category:Noir   num:14
+category:Melancholy   num:3
+category:Sunny   num:28
+category:Detailed   num:4
+category:Ethereal   num:5
+category:HDR   num:39
+category:Vintage   num:4
+category:Depth_of_Field   num:2
+category:Minimal   num:11
+category:Horror   num:15
+category:Geometirc_Composition   num:23
+category:Macro   num:4
+category:Hazy   num:16
+category:Texture   num:4
+category:Serene   num:28
+category:Romantic   num:2
+large category:Texture
+category:Bright   num:31
+category:Bokeh   num:26
+category:Noir   num:22
+category:Melancholy   num:16
+category:Sunny   num:12
+category:Detailed   num:33
+category:Ethereal   num:33
+category:HDR   num:31
+category:Vintage   num:18
+category:Depth_of_Field   num:17
+category:Minimal   num:64
+category:Horror   num:21
+category:Pastel   num:3
+category:Geometirc_Composition   num:46
+category:Macro   num:38
+category:Hazy   num:6
+category:Long_Exposure   num:5
+category:Serene   num:24
+category:Romantic   num:12
+large category:Serene
+category:Bright   num:22
+category:Bokeh   num:36
+category:Noir   num:13
+category:Melancholy   num:8
+category:Sunny   num:66
+category:Detailed   num:33
+category:Ethereal   num:13
+category:HDR   num:49
+category:Vintage   num:13
+category:Depth_of_Field   num:11
+category:Minimal   num:39
+category:Horror   num:11
+category:Pastel   num:13
+category:Geometirc_Composition   num:14
+category:Macro   num:21
+category:Hazy   num:51
+category:Long_Exposure   num:50
+category:Texture   num:22
+category:Romantic   num:11
+large category:Romantic
+category:Bright   num:18
+category:Bokeh   num:31
+category:Noir   num:17
+category:Melancholy   num:30
+category:Sunny   num:28
+category:Detailed   num:27
+category:Ethereal   num:26
+category:HDR   num:20
+category:Vintage   num:76
+category:Depth_of_Field   num:12
+category:Minimal   num:12
+category:Horror   num:20
+category:Pastel   num:60
+category:Geometirc_Composition   num:13
+category:Macro   num:6
+category:Hazy   num:16
+category:Long_Exposure   num:13
+category:Texture   num:6
+category:Serene   num:30
+```
+
+
+
+
+
+表格统计
