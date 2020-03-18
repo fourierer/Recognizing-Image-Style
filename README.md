@@ -7,7 +7,7 @@ Recognizing Image Style with Resnet or other model in pytorch
 
 1.下载数据集
 
-数据集使用Flickr Style dataset，可以直接百度搜索下载即可。由于数据集网站(https://www.flickr.com/photos/51299916@N07/)每张图片对应于一个url，数据集不太好下载。这里采用caffe官网给出的例子来下载数据集(https://github.com/BVLC/caffe).
+数据集使用Flickr Style dataset，可以直接百度搜索下载即可。由于数据集网站(https://www.flickr.com/photos/51299916@N07/) 每张图片对应于一个url，数据集不太好下载。这里采用caffe官网给出的例子来下载数据集(https://github.com/BVLC/caffe).
 
 下载好整个repositories之后，开始下载数据集：
 
